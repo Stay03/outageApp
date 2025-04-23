@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { ChevronRight, ChevronLeft, X } from 'lucide-react';
-import './OnboardingPage.css'; // Import custom CSS for Montserrat font
 
 // Import the GIFs
 import powerGif from '../../assets/power.gif';
@@ -209,7 +208,7 @@ const OnboardingPage = () => {
   // Redirect if onboarding is already completed
   useEffect(() => {
     if (hasCompletedOnboarding) {
-      navigate('/dashboard', { replace: true });
+      navigate('/auth', { replace: true });
     }
   }, [hasCompletedOnboarding, navigate]);
   
@@ -218,7 +217,7 @@ const OnboardingPage = () => {
     if (currentScreenIndex === screens.length - 1) {
       // If on the last screen, complete onboarding
       completeOnboarding();
-      navigate('/dashboard', { replace: true });
+      navigate('/auth', { replace: true });
     } else {
       // Otherwise, go to the next screen
       setCurrentScreenIndex(currentScreenIndex + 1);
@@ -233,7 +232,7 @@ const OnboardingPage = () => {
   
   const handleSkip = () => {
     skipOnboarding();
-    navigate('/dashboard', { replace: true });
+    navigate('/auth', { replace: true });
   };
   
   // Animation variants

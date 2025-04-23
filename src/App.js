@@ -1,8 +1,13 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { OnboardingProvider } from './context/OnboardingContext';
+import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './routes/ProtectedRoute';
+import AuthRoute from './routes/AuthRoute';
 import OnboardingPage from './pages/onboarding/OnboardingPage';
+
+// Import auth components
+import AuthPage from './pages/auth/AuthPage';
 
 // Import main app components (to be implemented later)
 const Dashboard = () => <div>Dashboard (placeholder)</div>;
@@ -16,22 +21,27 @@ const LocationsPage = () => <div>Locations (placeholder)</div>;
 function App() {
   return (
     <OnboardingProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* Public routes */}
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          
-          {/* Protected routes - require completed onboarding */}
-          <Route element={<ProtectedRoute />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/outages" element={<OutagesPage />} />
-            <Route path="/locations" element={<LocationsPage />} />
-          </Route>
-          
-          {/* Default redirect */}
-          <Route path="*" element={<Navigate to="/onboarding" replace />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public routes */}
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/auth" element={<AuthPage />} />
+            
+            {/* Routes that require authentication */}
+            <Route element={<AuthRoute />}>
+              <Route element={<ProtectedRoute />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/outages" element={<OutagesPage />} />
+                <Route path="/locations" element={<LocationsPage />} />
+              </Route>
+            </Route>
+            
+            {/* Default redirect */}
+            <Route path="*" element={<Navigate to="/onboarding" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </OnboardingProvider>
   );
 }
