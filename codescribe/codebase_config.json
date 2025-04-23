@@ -1,0 +1,14 @@
+{
+    "ignore_patterns": ["package-lock.json","README.md", ".vscode", "codescribe", "env", "venv", ".git", "codebase_snapshot.md", "node_modules", "public"],
+    "ignore_extensions": [".log", ".tmp", ".gitignore"],
+    "list_only_extensions": [".png",".jpg",".jpeg",".gif",".ico",".svg",".db",".sqlite",".pdf",".zip"],
+    "max_file_size_mb": 5,
+    "include_paths": [
+      "src/context/OnboardingContext.jsx",
+      "src/hooks/useOnboarding.jsx",
+      "src/pages/onboarding/OnboardingPage.jsx",
+      "src/utils/storage.js",
+      "src/api/axios.js",
+      "src/App.js"
+  ]
+}

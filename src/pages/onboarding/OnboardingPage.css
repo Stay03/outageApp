@@ -1,0 +1,33 @@
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+/* Apply font throughout the onboarding */
+.font-inter {
+  font-family: 'Montserrat', sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* Modern typography styles */
+h2.font-inter {
+  letter-spacing: -0.02em;
+}
+
+/* Apply font smoothing for better rendering */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Mobile viewport adjustments */
+@media screen and (max-height: 700px) {
+  /* Scale down images on smaller screens */
+  .onboarding-gif-container {
+    transform: scale(0.85);
+    margin-bottom: 0.5rem !important;
+  }
+  
+  /* Reduce text margins on smaller screens */
+  .onboarding-text {
+    margin-bottom: 0.5rem !important;
+  }
+}
