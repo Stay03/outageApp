@@ -1,699 +1,543 @@
 # Codebase Documentation
 
 {
-  "Extraction Date": "2025-04-29 20:07:03",
+  "Extraction Date": "2025-04-29 22:53:04",
   "Include Paths": [
-    "src/components/locations/AddressAutocomplete.jsx",
-    "src/components/locations/LocationForm.jsx",
-    "src/pages/locations/AddLocationPage.jsx"
+    "src/context/AuthContext.jsx",
+    "src/hooks/useAuth.jsx",
+    "src/routes/AuthRoute.jsx",
+    "src/routes/ProtectedRoute.jsx",
+    "src/utils/storage.js",
+    "src/api/axios.js",
+    "src/api/auth.js",
+    "src/App.js"
   ]
 }
 
-### src/components/locations/AddressAutocomplete.jsx
+### src/context/AuthContext.jsx
 ```
-import React, { useState, useEffect, useRef } from 'react';
-import { useLoadScript } from '@react-google-maps/api';
-import { ExclamationCircleIcon } from '@heroicons/react/24/outline';
+import React, { createContext, useState, useEffect } from 'react';
+import { getAuthToken, saveAuthToken, clearAllStorage } from '../utils/storage';
+import apiClient from '../api/axios';
+import { loginUser, registerUser, fetchCurrentUser } from '../api/auth';
 
-const libraries = ['places'];
+export const AuthContext = createContext();
 
-const AddressAutocomplete = ({ onAddressSelect, defaultValue = '', error = false }) => {
-  const [inputValue, setInputValue] = useState(defaultValue);
-  const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef(null);
-  const autocompleteRef = useRef(null);
+export const AuthProvider = ({ children }) => {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [token, setToken] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
   
-  // Load Google Maps script with Places library
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: 'AIzaSyAeS-lrr37P6tmrqYd4eu54dm6NKn2-wqE',
-    libraries
-  });
-  
-  // Initialize Google Autocomplete when the script is loaded
+  // Check for existing token on mount
   useEffect(() => {
-    if (!isLoaded || !inputRef.current) return;
-    
-    // Create the autocomplete instance with broader types
-    autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
-      // Remove the types restriction or use ['establishment', 'geocode'] to include both places and addresses
-      // types: ['address'], // Removing this restriction
-      fields: ['address_components', 'formatted_address', 'geometry', 'name', 'place_id', 'types'],
-      // Restrition to Ghana and Nigeria
-      componentRestrictions: { country: ['gh', 'ng'] },
-    });
-    
-    // Add listener for place changes
-    autocompleteRef.current.addListener('place_changed', handlePlaceSelect);
-    
-    // Prevent form submission on Enter key (which would select the first autocomplete option)
-    inputRef.current.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') e.preventDefault();
-    });
-    
-    return () => {
-      if (autocompleteRef.current) {
-        window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
+    const checkAuthStatus = async () => {
+      setIsLoading(true);
+      try {
+        const storedToken = await getAuthToken();
+        
+        if (storedToken) {
+          // Validate token by fetching user data
+          const userData = await fetchCurrentUser();
+          setCurrentUser(userData);
+          setToken(storedToken);
+          setIsAuthenticated(true);
+        }
+      } catch (error) {
+        console.error('Auth validation error:', error);
+        // Invalid or expired token
+        await logout();
+      } finally {
+        setIsLoading(false);
       }
     };
-  }, [isLoaded, onAddressSelect]);
+    
+    checkAuthStatus();
+  }, []);
   
-  // Update input value when defaultValue changes
-  useEffect(() => {
-    if (defaultValue) {
-      setInputValue(defaultValue);
+  const login = async (email, password, rememberMe = false) => {
+    setIsLoading(true);
+    setAuthError(null);
+    
+    try {
+      const response = await loginUser({ email, password });
+      const { user, token } = response;
+      
+      // Store token
+      await saveAuthToken(token);
+      
+      // Update state
+      setCurrentUser(user);
+      setToken(token);
+      setIsAuthenticated(true);
+      
+      return user;
+    } catch (error) {
+      setAuthError(error.response?.data?.message || 'Login failed. Please check your credentials.');
+      throw error;
+    } finally {
+      setIsLoading(false);
     }
-  }, [defaultValue]);
+  };
   
-  // Handle place selection
-  const handlePlaceSelect = () => {
-    if (!autocompleteRef.current) return;
+  const register = async (userData) => {
+    setIsLoading(true);
+    setAuthError(null);
     
-    const place = autocompleteRef.current.getPlace();
-    if (!place || !place.geometry) return;
-    
-    // Format the selected address/place data
-    const placeData = {
-      formattedAddress: place.formatted_address || place.name,
-      name: place.name,
-      placeId: place.place_id,
-      types: place.types,
-      lat: place.geometry.location.lat(),
-      lng: place.geometry.location.lng(),
-      locality: '',
-      city: '',
-      country: ''
-    };
-    
-    // Extract address components if available
-    if (place.address_components) {
-      place.address_components.forEach(component => {
-        const types = component.types;
-        
-        if (types.includes('sublocality') || types.includes('neighborhood') )  {
-          placeData.locality = component.long_name;
-        }
-        
-        if (types.includes('locality')) {
-          placeData.city = component.long_name;
-        }
-        
-        if (types.includes('country')) {
-          placeData.country = component.long_name;
-        }
-      });
+    try {
+      const response = await registerUser(userData);
+      const { user, token } = response;
+      
+      // Store token
+      await saveAuthToken(token);
+      
+      // Update state
+      setCurrentUser(user);
+      setToken(token);
+      setIsAuthenticated(true);
+      
+      return user;
+    } catch (error) {
+      setAuthError(error.response?.data?.message || 'Registration failed. Please try again.');
+      throw error;
+    } finally {
+      setIsLoading(false);
     }
+  };
+  
+  const logout = async () => {
+    setIsLoading(true);
     
-    // Update input with formatted address or place name
-    setInputValue(place.formatted_address || place.name);
-    
-    // Call the callback with the parsed place data
-    onAddressSelect(placeData);
+    try {
+      // Clear all storage
+      await clearAllStorage();
+      
+      // Reset state
+      setCurrentUser(null);
+      setToken(null);
+      setIsAuthenticated(false);
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
   
-  // Handle input change
-  const handleInputChange = (e) => {
-    setInputValue(e.target.value);
+  const updateUserProfile = (userData) => {
+    setCurrentUser(prevUser => ({
+      ...prevUser,
+      ...userData
+    }));
   };
   
-  // Handle input focus
-  const handleFocus = () => {
-    setIsFocused(true);
-  };
-  
-  // Handle input blur
-  const handleBlur = () => {
-    setIsFocused(false);
+  const clearError = () => {
+    setAuthError(null);
   };
   
   return (
-    <div className="relative rounded-md shadow-sm">
-      <input
-        ref={inputRef}
-        type="text"
-        value={inputValue}
-        onChange={handleInputChange}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        placeholder="Enter address or place name"
-        className={`block w-full pr-10 focus:outline-none sm:text-sm rounded-md ${
-          error 
-            ? 'border-red-300 text-red-900 placeholder-red-300 focus:ring-red-500 focus:border-red-500' 
-            : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
-        } ${isFocused ? 'ring-2 ring-blue-500' : ''}`}
-        disabled={!isLoaded}
-      />
-      
-      {/* Loading or error indicator */}
-      {!isLoaded && (
-        <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-          <svg className="animate-spin h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-        </div>
-      )}
-      
-      {/* Error indicator */}
-      {error && isLoaded && (
-        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-          <ExclamationCircleIcon className="h-5 w-5 text-red-500" aria-hidden="true" />
-        </div>
-      )}
-      
-      {/* Load error message */}
-      {loadError && (
-        <p className="mt-2 text-sm text-red-600">
-          Error loading place search. Please enter address manually.
-        </p>
-      )}
-    </div>
+    <AuthContext.Provider 
+      value={{ 
+        currentUser,
+        isAuthenticated,
+        isLoading,
+        authError,
+        login,
+        register,
+        logout,
+        updateUserProfile,
+        clearError
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   );
 };
 
-export default AddressAutocomplete;
+export default AuthProvider;
 ```
 
-### src/components/locations/LocationForm.jsx
+### src/hooks/useAuth.jsx
 ```
-import React, { useState, useEffect } from 'react';
-import { AlertCircle, Info, CheckCircle, MapPin, ChevronDown, ChevronUp } from 'lucide-react';
-import AddressAutocomplete from './AddressAutocomplete';
-import MapSelector from './MapSelector';
-
-const LocationForm = ({ onSubmit, isLoading, error }) => {
-  // Form state
-  const [formData, setFormData] = useState({
-    name: '',
-    address: '',
-    locality: '',
-    city: '',
-    country: '',
-    latitude: null,
-    longitude: null
-  });
-  
-  // Form validation state
-  const [errors, setErrors] = useState({});
-  const [isDirty, setIsDirty] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
-  const [isAutofilled, setIsAutofilled] = useState(false);
-  
-  // Map center state
-  const [mapCenter, setMapCenter] = useState({
-    lat: 5.57,
-    lng: -0.26
-  });
-
-  // Location type suggestions
-  const locationTypes = ['Home', 'Office', 'Hostel', 'Work', 'School', 'Gym'];
-  
-  // Validate form
-  const validateForm = () => {
-    const newErrors = {};
-    
-    if (!formData.name.trim()) {
-      newErrors.name = 'Please provide a name for this location';
-    }
-    
-    if (!formData.address.trim()) {
-      newErrors.address = 'Address is required';
-    }
-    
-    if (!formData.city) {
-      newErrors.city = 'City is required';
-    }
-    
-    if (!formData.country) {
-      newErrors.country = 'Country is required';
-    }
-    
-    if (!formData.latitude) {
-      newErrors.latitude = 'Latitude is required';
-    } else if (formData.latitude < -90 || formData.latitude > 90) {
-      newErrors.latitude = 'Invalid latitude';
-    }
-    
-    if (!formData.longitude) {
-      newErrors.longitude = 'Longitude is required';
-    } else if (formData.longitude < -180 || formData.longitude > 180) {
-      newErrors.longitude = 'Invalid longitude';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-  
-  // Handle input change
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: name === 'latitude' || name === 'longitude' ? parseFloat(value) : value
-    }));
-    setIsDirty(true);
-  };
-  
-  // Handle address selection from autocomplete
-  const handleAddressSelect = (selectedAddress) => {
-    setFormData((prev) => ({
-      ...prev,
-      address: selectedAddress.formattedAddress,
-      locality: selectedAddress.locality || '',
-      city: selectedAddress.city || '',
-      country: selectedAddress.country || '',
-      latitude: selectedAddress.lat,
-      longitude: selectedAddress.lng
-    }));
-    
-    setMapCenter({
-      lat: selectedAddress.lat,
-      lng: selectedAddress.lng
-    });
-    
-    setIsDirty(true);
-    setIsAutofilled(true);
-  };
-  
-  // Handle marker drag on map
-  const handleMarkerDrag = (newPosition) => {
-    setFormData((prev) => ({
-      ...prev,
-      latitude: newPosition.lat,
-      longitude: newPosition.lng
-    }));
-    setIsDirty(true);
-  };
-  
-  // Handle form submission
-  const handleSubmit = (e) => {
-    if (e) e.preventDefault();
-    
-    if (validateForm()) {
-      onSubmit(formData);
-    }
-  };
-  
-  // Handle location type selection
-  const handleLocationTypeSelect = (type) => {
-    setFormData((prev) => ({
-      ...prev,
-      name: type
-    }));
-    setIsDirty(true);
-  };
-  
-  // Check if form is valid
-  const isValid = Object.keys(errors).length === 0 && isDirty;
-  
-  // Update map center when coordinates change
-  useEffect(() => {
-    if (formData.latitude && formData.longitude) {
-      setMapCenter({
-        lat: parseFloat(formData.latitude),
-        lng: parseFloat(formData.longitude)
-      });
-    }
-  }, [formData.latitude, formData.longitude]);
-  
-  return (
-    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-      <div className="grid grid-cols-1 lg:grid-cols-5 min-h-[600px]">
-        {/* Form Panel */}
-        <div className="lg:col-span-2 p-6 md:p-8">
-          <div className="flex items-center space-x-2 mb-6">
-            <MapPin className="h-6 w-6 text-indigo-600" />
-            <h2 className="text-xl font-semibold text-gray-900">Add New Location</h2>
-          </div>
-          
-          {/* Error Display */}
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 rounded-lg border border-red-100">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <AlertCircle className="h-5 w-5 text-red-400" />
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">Error</h3>
-                  <div className="mt-1 text-sm text-red-700">{error}</div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          <div className="space-y-6">
-            {/* Location Name with Bubbles */}
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                Location Name
-              </label>
-              <div className="mt-1 relative">
-                <input
-                  type="text"
-                  id="name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  className={`block w-full px-4 py-3 border ${
-                    errors.name ? 'border-red-300' : 'border-gray-300'
-                  } rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500`}
-                  placeholder="What do you call this place?"
-                />
-                {errors.name && (
-                  <p className="mt-2 text-sm text-red-600">{errors.name}</p>
-                )}
-              </div>
-              
-              {/* Quick Select Bubbles */}
-              <div className="mt-3">
-                <p className="text-xs text-gray-500 mb-2">Quick select:</p>
-                <div className="flex flex-wrap gap-2">
-                  {locationTypes.map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => handleLocationTypeSelect(type)}
-                      className={`px-3 py-1 rounded-full text-sm ${
-                        formData.name === type
-                          ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                          : 'bg-gray-100 text-gray-800 border border-gray-200 hover:bg-gray-200'
-                      }`}
-                    >
-                      {type}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            
-            {/* Address with Google Autocomplete */}
-            <div>
-              <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
-                Address
-              </label>
-              <div className="mt-1">
-                <AddressAutocomplete
-                  onAddressSelect={handleAddressSelect}
-                  defaultValue={formData.address}
-                  error={!!errors.address}
-                />
-                {errors.address && (
-                  <p className="mt-2 text-sm text-red-600">{errors.address}</p>
-                )}
-              </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Enter your address or use the map to set your location
-              </p>
-            </div>
-            
-            {/* Collapsible Details Section (only shown after autofill) */}
-            {isAutofilled && (
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowDetails(!showDetails)}
-                  className="flex items-center text-sm text-indigo-600 hover:text-indigo-800 focus:outline-none"
-                >
-                  {showDetails ? (
-                    <>
-                      <ChevronUp className="h-4 w-4 mr-1" />
-                      Hide location details
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="h-4 w-4 mr-1" />
-                      Show location details
-                    </>
-                  )}
-                </button>
-                
-                {showDetails && (
-                  <div className="mt-4 space-y-4">
-                    {/* Locality/Neighborhood */}
-                    <div>
-                      <label htmlFor="locality" className="block text-sm font-medium text-gray-700">
-                        Neighborhood/Locality
-                      </label>
-                      <div className="mt-1">
-                        <input
-                          type="text"
-                          id="locality"
-                          name="locality"
-                          value={formData.locality}
-                          onChange={handleChange}
-                          className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full px-4 py-3 sm:text-sm border-gray-300 rounded-lg"
-                        />
-                      </div>
-                    </div>
-                    
-                    {/* City and Country - Side by side */}
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div>
-                        <label htmlFor="city" className="block text-sm font-medium text-gray-700">
-                          City
-                        </label>
-                        <div className="mt-1">
-                          <input
-                            type="text"
-                            id="city"
-                            name="city"
-                            value={formData.city}
-                            onChange={handleChange}
-                            className={`shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full px-4 py-3 sm:text-sm border-gray-300 rounded-lg ${
-                              errors.city ? 'border-red-300' : ''
-                            }`}
-                          />
-                          {errors.city && (
-                            <p className="mt-2 text-sm text-red-600">{errors.city}</p>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label htmlFor="country" className="block text-sm font-medium text-gray-700">
-                          Country
-                        </label>
-                        <div className="mt-1">
-                          <input
-                            type="text"
-                            id="country"
-                            name="country"
-                            value={formData.country}
-                            onChange={handleChange}
-                            className={`shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full px-4 py-3 sm:text-sm border-gray-300 rounded-lg ${
-                              errors.country ? 'border-red-300' : ''
-                            }`}
-                          />
-                          {errors.country && (
-                            <p className="mt-2 text-sm text-red-600">{errors.country}</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Coordinates - Side by side */}
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div>
-                        <label htmlFor="latitude" className="block text-sm font-medium text-gray-700">
-                          Latitude
-                        </label>
-                        <div className="mt-1 relative">
-                          <input
-                            type="number"
-                            step="any"
-                            id="latitude"
-                            name="latitude"
-                            value={formData.latitude || ''}
-                            onChange={handleChange}
-                            className={`shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full px-4 py-3 sm:text-sm border-gray-300 rounded-lg ${
-                              errors.latitude ? 'border-red-300' : ''
-                            }`}
-                          />
-                          {errors.latitude && (
-                            <p className="mt-2 text-sm text-red-600">{errors.latitude}</p>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label htmlFor="longitude" className="block text-sm font-medium text-gray-700">
-                          Longitude
-                        </label>
-                        <div className="mt-1">
-                          <input
-                            type="number"
-                            step="any"
-                            id="longitude"
-                            name="longitude"
-                            value={formData.longitude || ''}
-                            onChange={handleChange}
-                            className={`shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full px-4 py-3 sm:text-sm border-gray-300 rounded-lg ${
-                              errors.longitude ? 'border-red-300' : ''
-                            }`}
-                          />
-                          {errors.longitude && (
-                            <p className="mt-2 text-sm text-red-600">{errors.longitude}</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {/* Coordinate helper text */}
-            <div className="flex items-start">
-              <div className="flex-shrink-0">
-                <Info className="h-5 w-5 text-indigo-400" />
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-gray-500">
-                  Drag the map marker to precisely adjust your location coordinates
-                </p>
-              </div>
-            </div>
-            
-            {/* Submit button */}
-            <div>
-              <button
-                onClick={handleSubmit}
-                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isLoading || !isValid}
-              >
-                {isLoading ? (
-                  <span className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Saving Location...
-                  </span>
-                ) : (
-                  <span className="flex items-center">
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Save Location
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        {/* Map Panel */}
-        <div className="lg:col-span-3 h-96 lg:h-auto">
-          <div className="h-full w-full">
-            <MapSelector
-              center={mapCenter}
-              onMarkerDrag={handleMarkerDrag}
-              hasCoordinates={!!(formData.latitude && formData.longitude)}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default LocationForm;
-```
-
-### src/pages/locations/AddLocationPage.jsx
-```
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useLocation } from '../../hooks/useLocation';
-import { useAuth } from '../../hooks/useAuth';
-import LocationForm from '../../components/locations/LocationForm';
-import { Transition } from '@headlessui/react';
-import { MapPinIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { useContext } from 'react';
+import { AuthContext } from '../context/AuthContext';
 
 /**
- * Add Location page for first-time setup
- * Provides a form and map interface for adding a user's first location
+ * Custom hook to access authentication context
+ * @returns {Object} Authentication methods and state
  */
-const AddLocationPage = () => {
-  const navigate = useNavigate();
-  const { addLocation, isLoading, locationError, clearLocationError } = useLocation();
-  const { currentUser } = useAuth();
-  const [success, setSuccess] = useState(false);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
   
-  // Handle form submission
-  const handleSubmit = async (locationData) => {
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  
+  return context;
+};
+
+export default useAuth;
+```
+
+### src/routes/AuthRoute.jsx
+```
+import React from 'react';
+import { Navigate, Outlet } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+
+/**
+ * Route protection for unauthenticated users
+ * Redirects to login if the user is not authenticated
+ */
+const AuthRoute = () => {
+  const { isAuthenticated, isLoading } = useAuth();
+  
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="w-16 h-16 border-4 border-blue-400 border-t-blue-500 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+  
+  // Redirect to auth page if not authenticated
+  if (!isAuthenticated) {
+    return <Navigate to="/auth" replace />;
+  }
+  
+  // Render child routes if authenticated
+  return <Outlet />;
+};
+
+export default AuthRoute;
+```
+
+### src/routes/ProtectedRoute.jsx
+```
+import React from 'react';
+import { Navigate, Outlet } from 'react-router-dom';
+import { useOnboarding } from '../hooks/useOnboarding';
+import { useAuth } from '../hooks/useAuth';
+import { useLocation } from '../hooks/useLocation';
+
+/**
+ * Route protection for authenticated & onboarded users with locations
+ * Redirects based on onboarding, authentication, and location status
+ */
+const ProtectedRoute = () => {
+  const { hasCompletedOnboarding, isLoading: onboardingLoading } = useOnboarding();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { hasLocations, isLoading: locationLoading } = useLocation();
+  
+  // Show loading state while checking status
+  if (onboardingLoading || authLoading || locationLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="w-16 h-16 border-4 border-blue-400 border-t-blue-500 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+  
+  // Redirect to onboarding if not completed
+  if (!hasCompletedOnboarding) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  
+  // Redirect to auth if not authenticated
+  if (!isAuthenticated) {
+    return <Navigate to="/auth" replace />;
+  }
+  
+  // Redirect to add location if no locations exist
+  if (!hasLocations) {
+    return <Navigate to="/locations/add" replace />;
+  }
+  
+  // Render child routes if all conditions are met
+  return <Outlet />;
+};
+
+export default ProtectedRoute;
+```
+
+### src/utils/storage.js
+```
+/**
+ * Storage utility functions for the Power Outage Tracker app
+ * Handles saving and retrieving application state from localStorage
+ */
+
+// Keys for local storage
+export const STORAGE_KEYS = {
+    ONBOARDING_COMPLETED: 'pot_onboarding_completed',
+    AUTH_TOKEN: 'pot_auth_token',
+    USER_DATA: 'pot_user_data'
+  };
+  
+  /**
+   * Save onboarding completion status to local storage
+   * @param {boolean} completed - Whether onboarding has been completed
+   * @returns {Promise<boolean>} Success status
+   */
+  export const saveOnboardingStatus = async (completed) => {
     try {
-      clearLocationError();
-      const result = await addLocation(locationData);
-      setSuccess(true);
-      
-      // Redirect to dashboard after a short delay to show success message
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 1500);
-      
-      return result;
+      localStorage.setItem(STORAGE_KEYS.ONBOARDING_COMPLETED, JSON.stringify(completed));
+      return true;
     } catch (error) {
-      console.error('Failed to add location:', error);
+      console.error('Error saving onboarding status:', error);
+      return false;
+    }
+  };
+  
+  /**
+   * Get onboarding completion status from local storage
+   * @returns {Promise<boolean>} Whether onboarding has been completed
+   */
+  export const getOnboardingStatus = async () => {
+    try {
+      const status = localStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETED);
+      return status ? JSON.parse(status) : false;
+    } catch (error) {
+      console.error('Error retrieving onboarding status:', error);
+      return false;
+    }
+  };
+  
+  /**
+   * Save authentication token to local storage
+   * @param {string} token - The authentication token
+   * @returns {Promise<boolean>} Success status
+   */
+  export const saveAuthToken = async (token) => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
+      return true;
+    } catch (error) {
+      console.error('Error saving auth token:', error);
+      return false;
+    }
+  };
+  
+  /**
+   * Get authentication token from local storage
+   * @returns {Promise<string|null>} The stored token or null
+   */
+  export const getAuthToken = async () => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+    } catch (error) {
+      console.error('Error retrieving auth token:', error);
       return null;
     }
   };
   
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <MapPinIcon className="h-12 w-12 text-blue-500" />
-        </div>
-        <h2 className="mt-2 text-center text-3xl font-extrabold text-gray-900">
-          Set Up Your First Location
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600 max-w-md mx-auto">
-          {currentUser?.name ? `Hi ${currentUser.name}! ` : ''}
-          To track power outages in your area, we need to know where you're located.
-        </p>
-      </div>
+  /**
+   * Clear all app data from local storage
+   * @returns {Promise<boolean>} Success status
+   */
+  export const clearAllStorage = async () => {
+    try {
+      Object.values(STORAGE_KEYS).forEach(key => {
+        localStorage.removeItem(key);
+      });
+      return true;
+    } catch (error) {
+      console.error('Error clearing storage:', error);
+      return false;
+    }
+  };
+```
+
+### src/api/axios.js
+```
+import axios from 'axios';
+import { getAuthToken } from '../utils/storage';
+
+// Create axios instance with base URL from environment variable or default
+const apiClient = axios.create({
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1',
+  headers: {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  }
+});
+
+// Request interceptor
+apiClient.interceptors.request.use(
+  async (config) => {
+    // Add auth token to request if it exists
+    const token = await getAuthToken();
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor
+apiClient.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  async (error) => {
+    const originalRequest = error.config;
+    
+    // Handle 401 Unauthorized errors
+    if (error.response && error.response.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
       
-      {/* Success message that shows after form submission */}
-      <Transition
-        show={success}
-        enter="transition-opacity duration-300"
-        enterFrom="opacity-0"
-        enterTo="opacity-100"
-        leave="transition-opacity duration-150"
-        leaveFrom="opacity-100"
-        leaveTo="opacity-0"
-      >
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-white bg-opacity-90">
-          <div className="text-center p-6 rounded-lg">
-            <CheckCircleIcon className="h-16 w-16 text-green-500 mx-auto animate-bounce" />
-            <h3 className="mt-2 text-xl font-medium text-gray-900">Location Added Successfully!</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Redirecting you to the dashboard...
-            </p>
-          </div>
-        </div>
-      </Transition>
-      
-      {/* Main content area */}
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-5xl px-4">
-        {/* Location form with error display */}
-          <LocationForm 
-            onSubmit={handleSubmit} 
-            isLoading={isLoading} 
-            error={locationError}
-          />
-        
-        
-        {/* Help text */}
-        <div className="mt-6 text-center">
-          <p className="text-xs text-gray-500">
-            Your location information is used only for tracking power outages in your area.
-            We never share your exact location with third parties.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+      // For token refresh implementation:
+      // if (error.response.data.message === 'Token expired') {
+      //   try {
+      //     // Refresh token logic would go here
+      //     // Then retry original request
+      //     return apiClient(originalRequest);
+      //   } catch (refreshError) {
+      //     // Handle refresh failure
+      //   }
+      // }
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
+export default apiClient;
+```
+
+### src/api/auth.js
+```
+import apiClient from './axios';
+
+/**
+ * Register a new user
+ * @param {Object} userData User registration data
+ * @returns {Promise<Object>} Registration response data
+ */
+export const registerUser = async (userData) => {
+  try {
+    const response = await apiClient.post('/auth/register', userData);
+    return response.data;
+  } catch (error) {
+    console.error('Registration error:', error.response?.data || error.message);
+    throw error;
+  }
 };
 
-export default AddLocationPage;
+/**
+ * Login a user
+ * @param {Object} credentials User credentials
+ * @param {Boolean} logoutOthers Whether to invalidate other sessions
+ * @returns {Promise<Object>} Login response data
+ */
+export const loginUser = async ({ email, password, logoutOthers = false }) => {
+  try {
+    const response = await apiClient.post('/auth/login', {
+      email,
+      password,
+      logout_others: logoutOthers
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Login error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Logout the current user
+ * @returns {Promise<Object>} Logout response data
+ */
+export const logoutUser = async () => {
+  try {
+    const response = await apiClient.post('/auth/logout');
+    return response.data;
+  } catch (error) {
+    console.error('Logout error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Fetch current user data
+ * @returns {Promise<Object>} User data
+ */
+export const fetchCurrentUser = async () => {
+  try {
+    const response = await apiClient.get('/auth/user');
+    return response.data.user;
+  } catch (error) {
+    console.error('Fetch user error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+```
+
+### src/App.js
+```
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { OnboardingProvider } from './context/OnboardingContext';
+import { AuthProvider } from './context/AuthContext';
+import { LocationProvider } from './context/LocationContext';
+import ProtectedRoute from './routes/ProtectedRoute';
+import AuthRoute from './routes/AuthRoute';
+import LocationRoute from './routes/LocationRoute';
+import OnboardingPage from './pages/onboarding/OnboardingPage';
+
+// Import auth components
+import AuthPage from './pages/auth/AuthPage';
+
+// Import location components
+import AddLocationPage from './pages/locations/AddLocationPage';
+const LocationsPage = () => <div>Locations (placeholder)</div>;
+
+// Import main app components (to be implemented later)
+const Dashboard = () => <div>Dashboard (placeholder)</div>;
+const OutagesPage = () => <div>Outages (placeholder)</div>;
+
+/**
+ * Main application component
+ * Sets up routing and context providers
+ */
+function App() {
+  return (
+    <OnboardingProvider>
+      <AuthProvider>
+        <LocationProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/onboarding" element={<OnboardingPage />} />
+              <Route path="/auth" element={<AuthPage />} />
+              
+              {/* Location setup route */}
+              <Route path="/locations/add" element={<AddLocationPage />} />
+              
+              {/* Routes that require authentication */}
+              <Route element={<AuthRoute />}>
+                {/* Routes that require location */}
+                <Route element={<LocationRoute />}>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/outages" element={<OutagesPage />} />
+                  <Route path="/locations" element={<LocationsPage />} />
+                </Route>
+              </Route>
+              
+              {/* Default redirect */}
+              <Route path="*" element={<Navigate to="/onboarding" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </LocationProvider>
+      </AuthProvider>
+    </OnboardingProvider>
+  );
+}
+
+export default App;
 ```
 

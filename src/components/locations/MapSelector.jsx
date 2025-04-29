@@ -20,7 +20,7 @@ const mapOptions = {
     {
       featureType: 'poi',
       elementType: 'labels',
-      stylers: [{ visibility: 'off' }]
+      stylers: [{ visibility: 'on' }]
     }
   ]
 };

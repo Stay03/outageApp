@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from '../../hooks/useLocation';
 import { useAuth } from '../../hooks/useAuth';
-import LocationForm from '../../components/locations/LocationForm';
+import LocationFormController from '../../components/locations/LocationFormController';
 import { Transition } from '@headlessui/react';
 import { MapPinIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 
@@ -15,26 +15,26 @@ const AddLocationPage = () => {
   const { addLocation, isLoading, locationError, clearLocationError } = useLocation();
   const { currentUser } = useAuth();
   const [success, setSuccess] = useState(false);
-  
+
   // Handle form submission
   const handleSubmit = async (locationData) => {
     try {
       clearLocationError();
       const result = await addLocation(locationData);
       setSuccess(true);
-      
+
       // Redirect to dashboard after a short delay to show success message
       setTimeout(() => {
         navigate('/dashboard');
       }, 1500);
-      
+
       return result;
     } catch (error) {
       console.error('Failed to add location:', error);
       return null;
     }
   };
-  
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -49,7 +49,7 @@ const AddLocationPage = () => {
           To track power outages in your area, we need to know where you're located.
         </p>
       </div>
-      
+
       {/* Success message that shows after form submission */}
       <Transition
         show={success}
@@ -70,17 +70,16 @@ const AddLocationPage = () => {
           </div>
         </div>
       </Transition>
-      
+
       {/* Main content area */}
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-5xl px-4">
         {/* Location form with error display */}
-          <LocationForm 
-            onSubmit={handleSubmit} 
-            isLoading={isLoading} 
-            error={locationError}
-          />
-        
-        
+        <LocationFormController
+          onSubmit={handleSubmit}
+          isLoading={isLoading}
+          error={locationError}
+        />
+
         {/* Help text */}
         <div className="mt-6 text-center">
           <p className="text-xs text-gray-500">
