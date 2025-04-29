@@ -4,8 +4,13 @@
     "list_only_extensions": [".png",".jpg",".jpeg",".gif",".ico",".svg",".db",".sqlite",".pdf",".zip"],
     "max_file_size_mb": 5,
     "include_paths": [
-      "src/components/locations/AddressAutocomplete.jsx",
-      "src/components/locations/LocationForm.jsx",
-      "src/pages/locations/AddLocationPage.jsx"
+      "src/context/AuthContext.jsx",
+      "src/hooks/useAuth.jsx",
+      "src/routes/AuthRoute.jsx",
+      "src/routes/ProtectedRoute.jsx",
+      "src/utils/storage.js",
+      "src/api/axios.js",
+      "src/api/auth.js",
+      "src/App.js"
   ]
 }
